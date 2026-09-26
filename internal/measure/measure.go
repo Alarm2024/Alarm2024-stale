@@ -50,12 +50,12 @@ type Sample struct {
 	LagSlots       int64
 	LagMs          int64
 	TargetAdvanced bool
-	// RefBehind: the reference answered a lower slot than the target did.
-	// LagSlots is never negative, so that case reads as a lag of 0 — the
-	// same number a perfectly fresh target gets. The flag keeps the two
-	// apart. It says nothing about the target; it says the reference read
-	// below it in this sample.
-	RefBehind bool
+	// TrailingReference is true when this pair has RefSlot below TargetSlot.
+	// slotLag never returns a negative lag, so that pair looks like lag 0 —
+	// the same figure a target that is keeping up would get. The flag is
+	// how the two cases stay distinct. It is a statement about the
+	// reference in this sample, not about the target.
+	RefBehind bool // true when the reference slot is the lower of the two
 }
 
 type Result struct {
@@ -66,7 +66,7 @@ type Result struct {
 	LastRefSlot    uint64
 	LastLagSlots   int64
 	LastLagMs      int64
-	LastRefBehind  bool
+	LastRefBehind  bool // last sample's TrailingReference, when that sample exists
 	AnyTimeout     bool
 	RefAnswered    bool
 	TargetAnswered bool
@@ -200,9 +200,8 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		target, ref := askBoth(ctx, cfg)
 		sample := pairSample(at, target, ref)
 
-		if target.timedOut() || ref.timedOut() {
-			anyTimeout = true
-		}
+		deadlineHit := target.timedOut() || ref.timedOut()
+		anyTimeout = anyTimeout || deadlineHit
 		if sample.TargetOK {
 			targetAnswered = true
 			if hasPrevTarget && sample.TargetSlot > prevTarget {
@@ -265,13 +264,13 @@ func (a slotAnswer) ok() bool { return a.err == nil }
 // verdict.
 func (a slotAnswer) timedOut() bool { return errors.Is(a.err, context.DeadlineExceeded) }
 
-// askBoth asks the target and the reference for their slot at the same
-// moment and returns once both have answered or failed.
+// askBoth fires getSlot at the target and at the reference in the same
+// instant, then waits until both have returned a slot or an error.
 //
-// The two must be in flight together. Asked one after the other, the chain
-// keeps producing slots during the first call's round trip, and every one
-// of them shows up in the difference as lag the target never had. Asked
-// together, only the gap between the two round trips can leak in.
+// Sequential calls are the wrong shape. While the first round trip is in
+// the air the chain keeps making slots, and every one of them lands in the
+// difference as lag the target never had. Parallel calls leave only the
+// gap between the two round trips.
 func askBoth(ctx context.Context, cfg Config) (target, ref slotAnswer) {
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -305,9 +304,10 @@ func pairSample(at time.Time, target, ref slotAnswer) Sample {
 	return s
 }
 
-// slotLag is how many slots the target trails the reference by. It cannot
-// be negative: a reference that reads below the target gives a lag of 0 and
-// refBehind=true, so that the 0 is not mistaken for a target keeping pace.
+// slotLag is the target's deficit against the reference, in slots. It is
+// never negative. When the reference is the lower of the two, the deficit
+// is 0 and the trailing-reference flag is set, so that 0 is not taken for
+// a target that is keeping up.
 func slotLag(targetSlot, refSlot uint64) (lag int64, refBehind bool) {
 	if refSlot < targetSlot {
 		return 0, true
@@ -350,10 +350,9 @@ func ComputeVerdict(result Result, maxLag int64) Verdict {
 		return VerdictUnknown
 	}
 
-	// The reference is the witness. If it stood still for the whole window
-	// it saw nothing, and a lag measured against it is a number without a
-	// witness: the target may be frozen at the same height, or the reference
-	// may be the stuck one. Either way there is no FRESH to hand out.
+	// FRESH needs a live witness. A reference that never moved during the
+	// window did not observe anything: the target may be stuck at the same
+	// height, or the reference may be the stuck one. Neither case is FRESH.
 	if !referenceAdvanced(result.Samples) {
 		return VerdictUnknown
 	}
@@ -408,27 +407,20 @@ func answeredRefSlots(samples []Sample) []uint64 {
 }
 
 func FormatSampleLine(s Sample) string {
-	target := "timeout"
+	target, ref := "timeout", "timeout"
 	if s.TargetOK {
 		target = fmt.Sprintf("%d", s.TargetSlot)
 	}
-	ref := "timeout"
 	if s.RefOK {
 		ref = fmt.Sprintf("%d", s.RefSlot)
 	}
-	adv := "no"
-	if s.TargetAdvanced {
-		adv = "yes"
-	}
-	fields := []string{
-		fmt.Sprintf("target=%s ref=%s lag=%d slots (%d ms) advanced=%s",
-			target, ref, s.LagSlots, s.LagMs, adv),
-	}
-	// Printed only when set. On an ordinary sample the line stays as it
-	// always was; when the reference read behind, the lag=0 next to it gets
-	// its explanation.
-	if s.RefBehind {
-		fields = append(fields, "ref_behind=yes")
-	}
-	return strings.Join(fields, " ")
+	advanced := map[bool]string{false: "no", true: "yes"}[s.TargetAdvanced]
+	out := fmt.Sprintf("target=%s ref=%s lag=%d slots (%d ms) advanced=%s",
+		target, ref, s.LagSlots, s.LagMs, advanced)
+	return appendTrailingTag(out, s.RefBehind)
+}
+
+func appendTrailingTag(line string, trailing bool) string {
+	tag := map[bool]string{true: " ref_behind=yes"}[trailing]
+	return line + tag
 }

@@ -114,10 +114,9 @@ func (snap Snapshot) at(now time.Time) Snapshot {
 func (s *Sampler) collectSample(ctx context.Context) sampleRecord {
 	at := time.Now()
 	target, ref := askBoth(ctx, s.cfg)
-	return sampleRecord{
-		Sample:     pairSample(at, target, ref),
-		AnyTimeout: target.timedOut() || ref.timedOut(),
-	}
+	rec := sampleRecord{Sample: pairSample(at, target, ref)}
+	rec.AnyTimeout = target.timedOut() || ref.timedOut()
+	return rec
 }
 
 // snapshotFromHistory is the reading Start publishes after each sample.
