@@ -24,3 +24,18 @@ func TestNoSampleYetIsUnknown(t *testing.T) {
 		t.Fatalf("before any sample the verdict is %q, want UNKNOWN", got)
 	}
 }
+
+// The snapshot follows the last record of the sampler's history. An earlier
+// pair has the reference ahead; the last pair has it below the target, so
+// RefBehind is true. A false here is the reading /health used to publish
+// for every sample.
+func TestSnapshotRefBehindWhenLastPairedSampleTrails(t *testing.T) {
+	history := []sampleRecord{
+		{Sample: pairSample(time.Time{}, slotAnswer{slot: 100}, slotAnswer{slot: 150})},
+		{Sample: pairSample(time.Time{}, slotAnswer{slot: 1000}, slotAnswer{slot: 900})},
+	}
+	snap := snapshotFromHistory(history, 5)
+	if !snap.RefBehind {
+		t.Fatal("last paired sample has ref 900 < target 1000: snapshot RefBehind = false")
+	}
+}

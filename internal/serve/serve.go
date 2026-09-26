@@ -147,9 +147,13 @@ func (s *Server) addStaleHeaders(resp *http.Response) error {
 
 func (s *Server) writeSnapshot(w http.ResponseWriter) {
 	snap := s.sampler.Current()
-	var lag, ago any
+	var lag, ago, refBehind any
+	// lag_slots and ref_behind share a rule: without a paired sample there
+	// is no measurement, and a 0 or a false would look like one. Both are
+	// null until the lag is known.
 	if snap.LagKnown {
 		lag = snap.LagSlots
+		refBehind = snap.RefBehind
 	}
 	if snap.HasSample {
 		ago = snap.SampledMsAgo
@@ -164,7 +168,7 @@ func (s *Server) writeSnapshot(w http.ResponseWriter) {
 		"target_slot":     snap.TargetSlot,
 		"ref_slot":        snap.RefSlot,
 		"target_advanced": snap.TargetAdvanced,
-		"ref_behind":      snap.RefBehind,
+		"ref_behind":      refBehind,
 		"measured":        snap.Measured,
 		"degraded":        snap.Degraded,
 	})
