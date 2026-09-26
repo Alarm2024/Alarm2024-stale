@@ -321,8 +321,9 @@ func slotLag(targetSlot, refSlot uint64) (lag int64, refBehind bool) {
 // STALE and FRESH need different evidence. STALE can be proven by the samples
 // in which both endpoints answered, even if other calls in the window failed:
 // a target seen 100 slots behind twice does not become "unknown" because a
-// third call timed out. FRESH is a claim about the whole window, so it still
-// needs every call answered and a final sample from both endpoints.
+// third call timed out. FRESH is a claim about the whole window, so every
+// sample in it must be paired. A failure in the middle is not excused by a
+// healthy pair on either side of it.
 func ComputeVerdict(result Result, maxLag int64) Verdict {
 	if paired := pairedSamples(result.Samples); len(paired) >= MinSamples {
 		// A target seen advancing in any answered sample is not frozen.
@@ -340,9 +341,12 @@ func ComputeVerdict(result Result, maxLag int64) Verdict {
 	if result.AnyTimeout || !result.RefAnswered || !result.TargetAnswered {
 		return VerdictUnknown
 	}
-	// A failed call that was not a timeout still leaves the final lag as a
-	// placeholder 0. FRESH is never read off a placeholder.
-	if !result.LastLagKnown() {
+	// Every sample must be paired. LastLagKnown only inspects the final one,
+	// so a non-timeout failure in the middle (a 429, a refused connection)
+	// on either endpoint used to sit between two healthy pairs and still
+	// read as FRESH. The pairs around a gap are not a measurement of the
+	// window.
+	if len(pairedSamples(result.Samples)) != len(result.Samples) {
 		return VerdictUnknown
 	}
 
