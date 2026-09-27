@@ -2,7 +2,6 @@ package measure
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 )
@@ -22,8 +21,11 @@ type Snapshot struct {
 	TargetSlot     uint64    `json:"target_slot"`
 	RefSlot        uint64    `json:"ref_slot"`
 	TargetAdvanced bool      `json:"target_advanced"`
-	RefBehind      bool      `json:"ref_behind"`
-	Measured       bool      `json:"measured"`
+	// RefBehind is copied from the last sample, and only when that sample
+	// is paired. It is meaningless when LagKnown is false; /health prints
+	// null in that case, the same way it refuses to print a lag of 0.
+	RefBehind bool `json:"ref_behind"`
+	Measured  bool `json:"measured"`
 	// Degraded: the verdict is STALE, proven by paired samples, while other
 	// samples in the window went unanswered.
 	Degraded bool `json:"degraded"`
@@ -69,30 +71,8 @@ func (s *Sampler) Start(ctx context.Context) {
 					history = history[len(history)-32:]
 				}
 
-				result := resultFromHistory(history)
-				verdict := ComputeVerdict(result, s.cfg.MaxLag)
-				result.Verdict = verdict
-				measured := len(result.Samples) >= MinSamples &&
-					result.RefAnswered &&
-					result.TargetAnswered &&
-					!result.AnyTimeout
-
 				s.mu.Lock()
-				s.snapshot = Snapshot{
-					Verdict:        verdict,
-					LagSlots:       result.LastLagSlots,
-					LagKnown:       record.TargetOK && record.RefOK,
-					SampledAt:      record.At,
-					HasSample:      true,
-					TargetSlot:     result.LastTargetSlot,
-					RefSlot:        result.LastRefSlot,
-					TargetAdvanced: result.TargetAdvanced,
-					Measured:       measured,
-					Degraded:       isDegraded(result),
-				}
-				if !measured && s.snapshot.Verdict == VerdictFresh {
-					s.snapshot.Verdict = VerdictUnknown
-				}
+				s.snapshot = snapshotFromHistory(history, s.cfg.MaxLag)
 				s.mu.Unlock()
 			}
 		}
@@ -127,58 +107,52 @@ func (snap Snapshot) at(now time.Time) Snapshot {
 	return snap
 }
 
+// collectSample takes one sample the same way Run does: both endpoints are
+// asked together (see askBoth) and the pair is folded into a Sample. The
+// record also remembers whether either call hit its deadline, since the
+// verdict treats a timeout differently from any other failure.
 func (s *Sampler) collectSample(ctx context.Context) sampleRecord {
-	sample := Sample{At: time.Now()}
-	record := sampleRecord{Sample: sample}
+	at := time.Now()
+	target, ref := askBoth(ctx, s.cfg)
+	rec := sampleRecord{Sample: pairSample(at, target, ref)}
+	rec.AnyTimeout = target.timedOut() || ref.timedOut()
+	return rec
+}
 
-	// See Run: the calls run together so the first call's round trip does
-	// not inflate the measured lag.
-	type slotResult struct {
-		slot uint64
-		err  error
-	}
-	targetCh := make(chan slotResult, 1)
-	refCh := make(chan slotResult, 1)
-	go func() {
-		slot, err := s.cfg.GetSlot(ctx, s.cfg.TargetURL)
-		targetCh <- slotResult{slot, err}
-	}()
-	go func() {
-		slot, err := s.cfg.GetSlot(ctx, s.cfg.RefURL)
-		refCh <- slotResult{slot, err}
-	}()
-	targetRes, refRes := <-targetCh, <-refCh
-	targetSlot, targetErr := targetRes.slot, targetRes.err
-	refSlot, refErr := refRes.slot, refRes.err
-	if targetErr != nil {
-		if errors.Is(targetErr, context.DeadlineExceeded) {
-			record.AnyTimeout = true
-		}
-	} else {
-		sample.TargetOK = true
-		sample.TargetSlot = targetSlot
-	}
+// snapshotFromHistory is the reading Start publishes after each sample.
+// RefBehind comes from the last record, and only when that record is
+// paired. An unpaired record has no slots to compare, so the flag stays
+// false.
+func snapshotFromHistory(history []sampleRecord, maxLag int64) Snapshot {
+	record := history[len(history)-1]
+	result := resultFromHistory(history)
+	verdict := ComputeVerdict(result, maxLag)
+	result.Verdict = verdict
+	measured := len(result.Samples) >= MinSamples &&
+		result.RefAnswered &&
+		result.TargetAnswered &&
+		!result.AnyTimeout
+	paired := record.TargetOK && record.RefOK
 
-	if refErr != nil {
-		if errors.Is(refErr, context.DeadlineExceeded) {
-			record.AnyTimeout = true
-		}
-	} else {
-		sample.RefOK = true
-		sample.RefSlot = refSlot
+	snap := Snapshot{
+		Verdict:        verdict,
+		LagSlots:       result.LastLagSlots,
+		LagKnown:       paired,
+		SampledAt:      record.At,
+		HasSample:      true,
+		TargetSlot:     result.LastTargetSlot,
+		RefSlot:        result.LastRefSlot,
+		TargetAdvanced: result.TargetAdvanced,
+		Measured:       measured,
+		Degraded:       isDegraded(result),
 	}
-
-	if sample.TargetOK && sample.RefOK {
-		lag := int64(refSlot) - int64(targetSlot)
-		if lag < 0 {
-			sample.RefBehind = true
-			lag = 0
-		}
-		sample.LagSlots = lag
-		sample.LagMs = lag * int64(SlotDuration/time.Millisecond)
+	if paired {
+		snap.RefBehind = record.RefBehind
 	}
-	record.Sample = sample
-	return record
+	if !measured && snap.Verdict == VerdictFresh {
+		snap.Verdict = VerdictUnknown
+	}
+	return snap
 }
 
 func resultFromHistory(history []sampleRecord) Result {
@@ -196,14 +170,7 @@ func resultFromHistory(history []sampleRecord) Result {
 			result.RefAnswered = true
 		}
 	}
-	if len(samples) > 0 {
-		last := samples[len(samples)-1]
-		result.LastTargetSlot = last.TargetSlot
-		result.LastRefSlot = last.RefSlot
-		result.LastLagSlots = last.LagSlots
-		result.LastLagMs = last.LagMs
-		result.LastRefBehind = last.RefBehind
-	}
+	result.copyLastSample()
 	result.TargetAdvanced = targetAdvanced(samples)
 	return result
 }

@@ -51,20 +51,23 @@ func Run(ctx context.Context, opts Options) (measure.Verdict, error) {
 // VerdictLine is the last line of a check. The lag is printed only when the
 // final sample has an answer from both endpoints; otherwise it reads
 // "unknown", because the 0 behind it is a placeholder and would read as a
-// perfect score. degraded=true marks a STALE proven by the paired samples
-// while other calls in the window went unanswered.
+// perfect score. ref_behind follows the same rule: without a paired final
+// sample there is nothing to compare, and false would read as "not behind".
+// degraded=true marks a STALE proven by the paired samples while other calls
+// in the window went unanswered.
 func VerdictLine(result measure.Result) string {
-	lag := "unknown"
+	lag, refBehind := "unknown", "unknown"
 	if result.LastLagKnown() {
 		lag = fmt.Sprintf("%d slots (%d ms)", result.LastLagSlots, result.LastLagMs)
+		refBehind = fmt.Sprintf("%t", result.LastRefBehind)
 	}
-	return fmt.Sprintf("verdict=%s target_slot=%d ref_slot=%d lag=%s target_advanced=%t ref_behind=%t degraded=%t",
+	return fmt.Sprintf("verdict=%s target_slot=%d ref_slot=%d lag=%s target_advanced=%t ref_behind=%s degraded=%t",
 		result.Verdict,
 		result.LastTargetSlot,
 		result.LastRefSlot,
 		lag,
 		result.TargetAdvanced,
-		result.LastRefBehind,
+		refBehind,
 		result.Degraded,
 	)
 }

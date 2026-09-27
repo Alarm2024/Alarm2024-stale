@@ -63,6 +63,45 @@ func TestTimeoutNeverYieldsFresh(t *testing.T) {
 	}
 }
 
+// A 429 or a refused connection in the middle is not a timeout, and the
+// pairs around it still carry a real lag. FRESH needs every sample paired,
+// so the gap makes the window UNKNOWN. The same window with the gap filled
+// in is FRESH, below.
+func TestMiddleEndpointFailureIsNotFresh(t *testing.T) {
+	for name, gap := range map[string]measure.Sample{
+		"target failed":    {RefOK: true, RefSlot: 1002},
+		"reference failed": {TargetOK: true, TargetSlot: 1001},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := measure.Result{
+				Samples:        []measure.Sample{paired(1000, 1001), gap, paired(1002, 1003)},
+				TargetAdvanced: true,
+				RefAnswered:    true,
+				TargetAnswered: true,
+				LastLagSlots:   1,
+			}
+			if got := measure.ComputeVerdict(r, 5); got != measure.VerdictUnknown {
+				t.Fatalf("verdict = %s, want UNKNOWN", got)
+			}
+		})
+	}
+}
+
+// Every sample paired, the target moving, the reference moving, and the lag
+// inside the bound: that is FRESH.
+func TestAllPairedWindowIsFresh(t *testing.T) {
+	r := measure.Result{
+		Samples:        []measure.Sample{paired(1000, 1001), paired(1001, 1002), paired(1002, 1003)},
+		TargetAdvanced: true,
+		RefAnswered:    true,
+		TargetAnswered: true,
+		LastLagSlots:   1,
+	}
+	if got := measure.ComputeVerdict(r, 5); got != measure.VerdictFresh {
+		t.Fatalf("verdict = %s, want FRESH", got)
+	}
+}
+
 // A final call that failed without timing out (a 429, a refused connection)
 // leaves LastLagSlots as a placeholder 0. That 0 must not produce FRESH.
 func TestPlaceholderLagNeverYieldsFresh(t *testing.T) {
