@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://stale.elghaly.dev/sitemap.xml
