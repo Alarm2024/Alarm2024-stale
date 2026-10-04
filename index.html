@@ -89,6 +89,10 @@
       font-weight: 600;
       font-size: 14px;
     }
+    /* The letter is CSS, so the link's visible text is "STALE" and its name "stale home". */
+    .smark::before {
+      content: "S";
+    }
 
     .sword {
       font-weight: 600;
@@ -239,8 +243,8 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/">
-      <span class="smark" aria-hidden="true">S</span>
+    <a class="brand" href="/" aria-label="stale home">
+      <span class="smark" aria-hidden="true"></span>
       <span class="sword">STALE</span>
     </a>
   </header>
