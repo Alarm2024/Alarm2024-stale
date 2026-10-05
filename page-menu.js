@@ -211,6 +211,8 @@
       }
       flush();
       var m = /^H([1-6])$/.exec(tag);
+      // A logo <h1> is the site's name, not this page's heading.
+      if (m && m[1] === "1" && isLogo(el)) continue;
       if (m) {
         var h = inlineOf(el).replace(/\n/g, " ");
         if (h) out.push(new Array(+m[1] + 1).join("#") + " " + h);
@@ -291,39 +293,45 @@
     return (document.title || "").trim();
   }
 
-  function toMarkdown() {
-    var root = contentRoot(), out = [];
-    if (root === document.body) {
-      // No <main>: leave the site chrome out. A <header> or <footer> is site
-      // chrome only at page level, as in HTML's own landmark rule: inside an
-      // <article> or <section> it carries that block's title or date. A
-      // page-level <header> that holds the page's own title (a visible <h1>
-      // that is not a logo) is the page's hero and stays, intro text and
-      // all. Decide every element first, then mark, so one mark cannot
-      // change the next decision.
-      var found = root.querySelectorAll("footer, nav, header, [role=banner], [role=navigation], [role=contentinfo]");
-      var chrome = [];
-      for (var i = 0; i < found.length; i++) {
-        var el = found[i], tag = el.tagName;
-        if (tag === "HEADER" || tag === "FOOTER") {
-          var up = el.parentElement;
-          if (up && up.closest("article, aside, main, nav, section")) continue;
-          if (tag === "HEADER" && [].some.call(el.querySelectorAll("h1"), isTitleH1)) continue;
-        }
-        chrome.push(el);
+  // Site chrome: a page-level <header>/<footer> (HTML's own landmark rule:
+  // inside an <article> or <section> it carries that block's title or
+  // date), every <nav>, and the banner/navigation/contentinfo roles. A
+  // page-level <header> that holds the page's own title (a visible <h1>
+  // that is not a logo) is the page's hero and is not chrome. Everything is
+  // decided before anything is marked, so one mark cannot change the next
+  // decision.
+  function siteChrome() {
+    var found = document.body.querySelectorAll(
+      "footer, nav, header, [role=banner], [role=navigation], [role=contentinfo]");
+    var chrome = [];
+    for (var i = 0; i < found.length; i++) {
+      var el = found[i], tag = el.tagName;
+      if (tag === "HEADER" || tag === "FOOTER") {
+        var up = el.parentElement;
+        if (up && up.closest("article, aside, main, nav, section")) continue;
+        if (tag === "HEADER" && [].some.call(el.querySelectorAll("h1"), isTitleH1)) continue;
       }
-      for (var k = 0; k < chrome.length; k++) chrome[k].setAttribute("data-md-skip", "");
+      chrome.push(el);
+    }
+    return chrome;
+  }
+
+  function toMarkdown() {
+    var root = contentRoot(), out = [], title = "";
+    // Chrome stays marked while the body is converted and while the title
+    // is chosen, so neither can come from a footer, a nav or a logo banner.
+    // Outside a <body> root the marks only touch elements the root does not
+    // contain.
+    var chrome = siteChrome();
+    for (var k = 0; k < chrome.length; k++) chrome[k].setAttribute("data-md-skip", "");
+    try {
       blocks(root, out);
+      if (!out.some(function (b) { return /^# /.test(b); })) title = pageTitle();
+    } finally {
       for (var j = 0; j < chrome.length; j++) chrome[j].removeAttribute("data-md-skip");
-    } else {
-      blocks(root, out);
     }
     var md = out.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
-    var hasTitle = out.some(function (b) { return /^# /.test(b); });
-    if (!hasTitle) {
-      var title = pageTitle();
-      if (title) md = "# " + title + "\n\n" + md;
-    }
+    if (title) md = "# " + title + "\n\n" + md;
     return md + "\n\n---\nSource: " + pageUrl() + "\n";
   }
 
