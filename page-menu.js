@@ -83,6 +83,22 @@
     return cs.display === "none" || cs.visibility === "hidden";
   }
 
+  // True when el is on screen and not inside anything the conversion skips:
+  // hidden() looks at one element, this looks at the whole way up.
+  function shown(el) {
+    if (!el.getClientRects().length) return false;
+    for (var e = el; e && e !== document.documentElement; e = e.parentElement) {
+      if (SKIP[e.tagName] || hidden(e)) return false;
+    }
+    return true;
+  }
+
+  function hasShownH1(el) {
+    var hs = el.querySelectorAll("h1");
+    for (var i = 0; i < hs.length; i++) if (shown(hs[i])) return true;
+    return false;
+  }
+
   function abs(url) {
     try {
       return new URL(url, location.href).href;
@@ -255,7 +271,7 @@
   function pageTitle() {
     var hs = document.querySelectorAll("h1");
     for (var i = 0; i < hs.length; i++) {
-      if (hidden(hs[i])) continue;
+      if (!shown(hs[i])) continue;
       var t = inlineOf(hs[i]).replace(/\s+/g, " ").trim();
       if (t) return t;
     }
@@ -268,7 +284,9 @@
       // No <main>: leave the site chrome out. A <header> or <footer> is site
       // chrome only at page level, as in HTML's own landmark rule: inside an
       // <article> or <section> it carries that block's title or date. A
-      // page-level <header> that holds the page's <h1> stays too.
+      // page-level <header> that holds the page's visible <h1> stays too.
+      // Decide every element first, then mark, so one mark cannot change
+      // the next decision.
       var found = root.querySelectorAll("footer, nav, header, [role=banner], [role=navigation], [role=contentinfo]");
       var chrome = [];
       for (var i = 0; i < found.length; i++) {
@@ -276,11 +294,11 @@
         if (tag === "HEADER" || tag === "FOOTER") {
           var up = el.parentElement;
           if (up && up.closest("article, aside, main, nav, section")) continue;
-          if (tag === "HEADER" && el.querySelector("h1")) continue;
+          if (tag === "HEADER" && hasShownH1(el)) continue;
         }
-        el.setAttribute("data-md-skip", "");
         chrome.push(el);
       }
+      for (var k = 0; k < chrome.length; k++) chrome[k].setAttribute("data-md-skip", "");
       blocks(root, out);
       for (var j = 0; j < chrome.length; j++) chrome[j].removeAttribute("data-md-skip");
     } else {
