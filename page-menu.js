@@ -265,15 +265,21 @@
   function toMarkdown() {
     var root = contentRoot(), out = [];
     if (root === document.body) {
-      // No <main>: leave the site chrome out. A <header> is chrome unless it
-      // holds the page's own <h1>.
+      // No <main>: leave the site chrome out. A <header> or <footer> is site
+      // chrome only at page level, as in HTML's own landmark rule: inside an
+      // <article> or <section> it carries that block's title or date. A
+      // page-level <header> that holds the page's <h1> stays too.
       var found = root.querySelectorAll("footer, nav, header, [role=banner], [role=navigation], [role=contentinfo]");
       var chrome = [];
       for (var i = 0; i < found.length; i++) {
-        var isHeader = found[i].tagName === "HEADER" || found[i].getAttribute("role") === "banner";
-        if (isHeader && found[i].querySelector("h1")) continue;
-        found[i].setAttribute("data-md-skip", "");
-        chrome.push(found[i]);
+        var el = found[i], tag = el.tagName;
+        if (tag === "HEADER" || tag === "FOOTER") {
+          var up = el.parentElement;
+          if (up && up.closest("article, aside, main, nav, section")) continue;
+          if (tag === "HEADER" && el.querySelector("h1")) continue;
+        }
+        el.setAttribute("data-md-skip", "");
+        chrome.push(el);
       }
       blocks(root, out);
       for (var j = 0; j < chrome.length; j++) chrome[j].removeAttribute("data-md-skip");
