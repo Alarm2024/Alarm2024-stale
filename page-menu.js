@@ -265,7 +265,9 @@
   }
 
   // An <h1> that is all link or all image is a site logo, not a page title.
+  // So is one inside a link (<a href="/"><h1>Brand</h1></a>).
   function isLogo(h) {
+    if (h.parentElement && h.parentElement.closest("a[href]")) return true;
     var t = text(h), links = h.querySelectorAll("a[href]");
     for (var i = 0; i < links.length; i++) if (text(links[i]) === t) return true;
     return !t && !!h.querySelector("img, svg");
