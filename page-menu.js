@@ -280,14 +280,23 @@
     return shown(h) && !isLogo(h);
   }
 
-  // The page title when the content root has no <h1> of its own: the first
-  // visible <h1> that is not a logo (on these sites a hero <h1> sits in a
-  // page-level <header> above <main>), else the document title.
-  function pageTitle() {
+  // The page's own title: the first visible <h1> that is not a logo and not
+  // in site chrome (it is called while chrome is marked), else the document
+  // title. On these sites a hero <h1> often sits in a page-level <header>
+  // above <main>. On a page of cards (two or more <article>s) a card's <h1>
+  // is that card's title, not the page's, unless the content root is that
+  // card.
+  function pageTitle(root) {
+    var cards = document.querySelectorAll("article").length > 1;
     var hs = document.querySelectorAll("h1");
     for (var i = 0; i < hs.length; i++) {
-      if (!isTitleH1(hs[i])) continue;
-      var t = inlineOf(hs[i]).replace(/\s+/g, " ").trim();
+      var h = hs[i];
+      if (!isTitleH1(h)) continue;
+      if (cards) {
+        var card = h.closest("article");
+        if (card && card !== root && !card.contains(root)) continue;
+      }
+      var t = inlineOf(h).replace(/\s+/g, " ").trim();
       if (t) return t;
     }
     return (document.title || "").trim();
@@ -326,12 +335,19 @@
     for (var k = 0; k < chrome.length; k++) chrome[k].setAttribute("data-md-skip", "");
     try {
       blocks(root, out);
-      if (!out.some(function (b) { return /^# /.test(b); })) title = pageTitle();
+      title = pageTitle(root);
     } finally {
       for (var j = 0; j < chrome.length; j++) chrome[j].removeAttribute("data-md-skip");
     }
+    // The copy always opens with the page's own title. If the first <h1>
+    // that came out is something else (a card's, say), the title goes on
+    // top; if it is the title, nothing is added.
+    var first = "";
+    for (var b = 0; b < out.length; b++) {
+      if (/^# /.test(out[b])) { first = out[b].slice(2).trim(); break; }
+    }
     var md = out.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
-    if (title) md = "# " + title + "\n\n" + md;
+    if (title && first !== title) md = "# " + title + "\n\n" + md;
     return md + "\n\n---\nSource: " + pageUrl() + "\n";
   }
 
