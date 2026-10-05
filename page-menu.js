@@ -26,10 +26,11 @@
     ".pm-dots{font-size:1.1em;letter-spacing:.05em}" +
     ".pm-panel{position:absolute;right:0;top:calc(100% + 6px);z-index:60;width:16rem;" +
     "max-width:calc(100vw - 32px);padding:.35rem;border:1px solid rgba(127,127,127,.45);" +
-    "border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,.35);text-align:left}" +
+    "border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,.35);text-align:start}" +
+    ".pm-rtl .pm-panel{right:auto;left:0}" +
     ".pm-panel a,.pm-panel button{display:flex;flex-direction:column;justify-content:center;" +
     "gap:.15rem;width:100%;min-height:44px;margin:0;padding:.5rem .7rem;border:0;" +
-    "border-radius:8px;background:none;color:inherit;font:inherit;text-align:left;" +
+    "border-radius:8px;background:none;color:inherit;font:inherit;text-align:start;" +
     "text-decoration:none;cursor:pointer}" +
     ".pm-panel a:hover,.pm-panel button:hover,.pm-panel a:focus-visible,.pm-panel button:focus-visible" +
     "{background:rgba(127,127,127,.18);outline:none}" +
@@ -249,21 +250,42 @@
     return document.body;
   }
 
+  // The page's <h1> when it is outside the content root (a hero above
+  // <main>), else the document title.
+  function pageTitle() {
+    var hs = document.querySelectorAll("h1");
+    for (var i = 0; i < hs.length; i++) {
+      if (hidden(hs[i])) continue;
+      var t = inlineOf(hs[i]).replace(/\s+/g, " ").trim();
+      if (t) return t;
+    }
+    return (document.title || "").trim();
+  }
+
   function toMarkdown() {
     var root = contentRoot(), out = [];
     if (root === document.body) {
-      // No <main>: leave the site chrome out.
-      var chrome = root.querySelectorAll("footer, header nav, nav");
-      for (var i = 0; i < chrome.length; i++) chrome[i].setAttribute("data-md-skip", "");
+      // No <main>: leave the site chrome out. A <header> is chrome unless it
+      // holds the page's own <h1>.
+      var found = root.querySelectorAll("footer, nav, header, [role=banner], [role=navigation], [role=contentinfo]");
+      var chrome = [];
+      for (var i = 0; i < found.length; i++) {
+        var isHeader = found[i].tagName === "HEADER" || found[i].getAttribute("role") === "banner";
+        if (isHeader && found[i].querySelector("h1")) continue;
+        found[i].setAttribute("data-md-skip", "");
+        chrome.push(found[i]);
+      }
       blocks(root, out);
       for (var j = 0; j < chrome.length; j++) chrome[j].removeAttribute("data-md-skip");
     } else {
       blocks(root, out);
     }
     var md = out.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
-    var hasTitle = /^# /m.test(md);
-    var title = (document.title || "").trim();
-    if (!hasTitle && title) md = "# " + title + "\n\n" + md;
+    var hasTitle = out.some(function (b) { return /^# /.test(b); });
+    if (!hasTitle) {
+      var title = pageTitle();
+      if (title) md = "# " + title + "\n\n" + md;
+    }
     return md + "\n\n---\nSource: " + pageUrl() + "\n";
   }
 
@@ -379,7 +401,11 @@
     slot.appendChild(live);
 
     details.addEventListener("toggle", function () {
-      if (details.open) panel.style.background = panelBackground(slot);
+      if (!details.open) return;
+      panel.style.background = panelBackground(slot);
+      // Read the direction now: a language switch can flip dir after load.
+      var rtl = window.getComputedStyle(slot).direction === "rtl";
+      details.classList.toggle("pm-rtl", rtl);
     });
 
     panel.addEventListener("click", function (e) {
