@@ -271,13 +271,18 @@
     return !t && !!h.querySelector("img, svg");
   }
 
+  // A visible <h1> that is not a logo: the page's own title.
+  function isTitleH1(h) {
+    return shown(h) && !isLogo(h);
+  }
+
   // The page title when the content root has no <h1> of its own: the first
   // visible <h1> that is not a logo (on these sites a hero <h1> sits in a
   // page-level <header> above <main>), else the document title.
   function pageTitle() {
     var hs = document.querySelectorAll("h1");
     for (var i = 0; i < hs.length; i++) {
-      if (!shown(hs[i]) || isLogo(hs[i])) continue;
+      if (!isTitleH1(hs[i])) continue;
       var t = inlineOf(hs[i]).replace(/\s+/g, " ").trim();
       if (t) return t;
     }
@@ -289,9 +294,10 @@
     if (root === document.body) {
       // No <main>: leave the site chrome out. A <header> or <footer> is site
       // chrome only at page level, as in HTML's own landmark rule: inside an
-      // <article> or <section> it carries that block's title or date. The
-      // page title is not lost with a page-level header: pageTitle() finds
-      // it. Decide every element first, then mark, so one mark cannot
+      // <article> or <section> it carries that block's title or date. A
+      // page-level <header> that holds the page's own title (a visible <h1>
+      // that is not a logo) is the page's hero and stays, intro text and
+      // all. Decide every element first, then mark, so one mark cannot
       // change the next decision.
       var found = root.querySelectorAll("footer, nav, header, [role=banner], [role=navigation], [role=contentinfo]");
       var chrome = [];
@@ -300,6 +306,7 @@
         if (tag === "HEADER" || tag === "FOOTER") {
           var up = el.parentElement;
           if (up && up.closest("article, aside, main, nav, section")) continue;
+          if (tag === "HEADER" && [].some.call(el.querySelectorAll("h1"), isTitleH1)) continue;
         }
         chrome.push(el);
       }
