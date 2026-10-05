@@ -93,12 +93,6 @@
     return true;
   }
 
-  function hasShownH1(el) {
-    var hs = el.querySelectorAll("h1");
-    for (var i = 0; i < hs.length; i++) if (shown(hs[i])) return true;
-    return false;
-  }
-
   function abs(url) {
     try {
       return new URL(url, location.href).href;
@@ -266,27 +260,28 @@
     return document.body;
   }
 
-  // The page's <h1> when it is outside the content root (a hero above
-  // <main>), else the document title.
-  function pageTitle() {
+  // The first visible <h1> on the page, for when the content root has none
+  // (a hero above <main>). Called while the site chrome is still marked, it
+  // passes over a logo heading in the site header.
+  function firstH1() {
     var hs = document.querySelectorAll("h1");
     for (var i = 0; i < hs.length; i++) {
       if (!shown(hs[i])) continue;
       var t = inlineOf(hs[i]).replace(/\s+/g, " ").trim();
       if (t) return t;
     }
-    return (document.title || "").trim();
+    return "";
   }
 
   function toMarkdown() {
-    var root = contentRoot(), out = [];
+    var root = contentRoot(), out = [], title = "";
     if (root === document.body) {
       // No <main>: leave the site chrome out. A <header> or <footer> is site
       // chrome only at page level, as in HTML's own landmark rule: inside an
-      // <article> or <section> it carries that block's title or date. A
-      // page-level <header> that holds the page's visible <h1> stays too.
-      // Decide every element first, then mark, so one mark cannot change
-      // the next decision.
+      // <article> or <section> it carries that block's title or date. The
+      // page title is not lost with a page-level header: it is taken from
+      // the page's visible <h1> below. Decide every element first, then
+      // mark, so one mark cannot change the next decision.
       var found = root.querySelectorAll("footer, nav, header, [role=banner], [role=navigation], [role=contentinfo]");
       var chrome = [];
       for (var i = 0; i < found.length; i++) {
@@ -294,12 +289,12 @@
         if (tag === "HEADER" || tag === "FOOTER") {
           var up = el.parentElement;
           if (up && up.closest("article, aside, main, nav, section")) continue;
-          if (tag === "HEADER" && hasShownH1(el)) continue;
         }
         chrome.push(el);
       }
       for (var k = 0; k < chrome.length; k++) chrome[k].setAttribute("data-md-skip", "");
       blocks(root, out);
+      title = firstH1();
       for (var j = 0; j < chrome.length; j++) chrome[j].removeAttribute("data-md-skip");
     } else {
       blocks(root, out);
@@ -307,7 +302,10 @@
     var md = out.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
     var hasTitle = out.some(function (b) { return /^# /.test(b); });
     if (!hasTitle) {
-      var title = pageTitle();
+      // Order: a visible <h1> outside the site chrome, then the document
+      // title, and only then an <h1> in the site header (it may be a logo).
+      var doc = (document.title || "").trim();
+      title = root === document.body ? title || doc || firstH1() : firstH1() || doc;
       if (title) md = "# " + title + "\n\n" + md;
     }
     return md + "\n\n---\nSource: " + pageUrl() + "\n";
