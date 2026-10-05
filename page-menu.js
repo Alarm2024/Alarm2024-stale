@@ -260,28 +260,39 @@
     return document.body;
   }
 
-  // The first visible <h1> on the page, for when the content root has none
-  // (a hero above <main>). Called while the site chrome is still marked, it
-  // passes over a logo heading in the site header.
-  function firstH1() {
+  function text(el) {
+    return (el.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
+  // An <h1> that is all link or all image is a site logo, not a page title.
+  function isLogo(h) {
+    var t = text(h), links = h.querySelectorAll("a[href]");
+    for (var i = 0; i < links.length; i++) if (text(links[i]) === t) return true;
+    return !t && !!h.querySelector("img, svg");
+  }
+
+  // The page title when the content root has no <h1> of its own: the first
+  // visible <h1> that is not a logo (on these sites a hero <h1> sits in a
+  // page-level <header> above <main>), else the document title.
+  function pageTitle() {
     var hs = document.querySelectorAll("h1");
     for (var i = 0; i < hs.length; i++) {
-      if (!shown(hs[i])) continue;
+      if (!shown(hs[i]) || isLogo(hs[i])) continue;
       var t = inlineOf(hs[i]).replace(/\s+/g, " ").trim();
       if (t) return t;
     }
-    return "";
+    return (document.title || "").trim();
   }
 
   function toMarkdown() {
-    var root = contentRoot(), out = [], title = "";
+    var root = contentRoot(), out = [];
     if (root === document.body) {
       // No <main>: leave the site chrome out. A <header> or <footer> is site
       // chrome only at page level, as in HTML's own landmark rule: inside an
       // <article> or <section> it carries that block's title or date. The
-      // page title is not lost with a page-level header: it is taken from
-      // the page's visible <h1> below. Decide every element first, then
-      // mark, so one mark cannot change the next decision.
+      // page title is not lost with a page-level header: pageTitle() finds
+      // it. Decide every element first, then mark, so one mark cannot
+      // change the next decision.
       var found = root.querySelectorAll("footer, nav, header, [role=banner], [role=navigation], [role=contentinfo]");
       var chrome = [];
       for (var i = 0; i < found.length; i++) {
@@ -294,7 +305,6 @@
       }
       for (var k = 0; k < chrome.length; k++) chrome[k].setAttribute("data-md-skip", "");
       blocks(root, out);
-      title = firstH1();
       for (var j = 0; j < chrome.length; j++) chrome[j].removeAttribute("data-md-skip");
     } else {
       blocks(root, out);
@@ -302,10 +312,7 @@
     var md = out.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
     var hasTitle = out.some(function (b) { return /^# /.test(b); });
     if (!hasTitle) {
-      // Order: a visible <h1> outside the site chrome, then the document
-      // title, and only then an <h1> in the site header (it may be a logo).
-      var doc = (document.title || "").trim();
-      title = root === document.body ? title || doc || firstH1() : firstH1() || doc;
+      var title = pageTitle();
       if (title) md = "# " + title + "\n\n" + md;
     }
     return md + "\n\n---\nSource: " + pageUrl() + "\n";
