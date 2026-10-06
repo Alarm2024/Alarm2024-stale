@@ -23,20 +23,21 @@
     "font-weight:600;background:rgba(127,127,127,.06)}" +
     ".pm-main,.pm-more>summary{display:inline-flex;align-items:center;justify-content:center;" +
     "color:inherit;cursor:pointer;-webkit-user-select:none;user-select:none;white-space:nowrap}" +
-    ".pm-main{gap:.55rem;padding:0 1.1rem;border-radius:13px 0 0 13px;text-decoration:none}" +
-    ".pm-rtl .pm-main{border-radius:0 13px 13px 0}" +
+    // Logical corners: the browser picks the outer edge from the text
+    // direction, so a language switch to Arabic needs no script to follow it.
+    ".pm-main{gap:.55rem;padding:0 1.1rem;border-start-start-radius:13px;" +
+    "border-end-start-radius:13px;text-decoration:none}" +
     ".pm-more{display:flex;border-inline-start:1px solid rgba(127,127,127,.45)}" +
-    ".pm-more>summary{list-style:none;width:44px;border-radius:0 13px 13px 0}" +
-    ".pm-rtl .pm-more>summary{border-radius:13px 0 0 13px}" +
+    ".pm-more>summary{list-style:none;width:44px;border-start-end-radius:13px;" +
+    "border-end-end-radius:13px}" +
     ".pm-more>summary::-webkit-details-marker{display:none}" +
     ".pm-main:hover,.pm-more>summary:hover,.pm-more[open]>summary{background:rgba(127,127,127,.16)}" +
     ".pm-main:focus-visible,.pm-more>summary:focus-visible{outline:2px solid currentColor;outline-offset:2px}" +
     ".pm-ico{width:18px;height:18px;flex:none}" +
     ".pm-more[open] .pm-chev{transform:rotate(180deg)}" +
-    ".pm-panel{position:absolute;right:0;top:calc(100% + 6px);z-index:60;width:17rem;" +
+    ".pm-panel{position:absolute;inset-inline-end:0;top:calc(100% + 6px);z-index:60;width:17rem;" +
     "max-width:calc(100vw - 32px);padding:.35rem;border:1px solid rgba(127,127,127,.45);" +
     "border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.38);text-align:start;font-weight:500}" +
-    ".pm-rtl .pm-panel{right:auto;left:0}" +
     ".pm-panel a,.pm-panel button{display:flex;flex-direction:column;justify-content:center;" +
     "gap:.15rem;width:100%;min-height:44px;margin:0;padding:.5rem .75rem;border:0;" +
     "border-radius:10px;background:none;color:inherit;font:inherit;text-align:start;" +
@@ -501,16 +502,9 @@
     slot.appendChild(box);
     slot.appendChild(live);
 
-    function setDir() {
-      // Read the direction now: a language switch can flip dir after load.
-      box.classList.toggle("pm-rtl", window.getComputedStyle(slot).direction === "rtl");
-    }
-    setDir();
-
     details.addEventListener("toggle", function () {
       if (!details.open) return;
       panel.style.background = panelBackground(slot);
-      setDir();
     });
 
     panel.addEventListener("click", function (e) {
