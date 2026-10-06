@@ -26,10 +26,11 @@
     ".pm-dots{font-size:1.1em;letter-spacing:.05em}" +
     ".pm-panel{position:absolute;right:0;top:calc(100% + 6px);z-index:60;width:16rem;" +
     "max-width:calc(100vw - 32px);padding:.35rem;border:1px solid rgba(127,127,127,.45);" +
-    "border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,.35);text-align:left}" +
+    "border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,.35);text-align:start}" +
+    ".pm-rtl .pm-panel{right:auto;left:0}" +
     ".pm-panel a,.pm-panel button{display:flex;flex-direction:column;justify-content:center;" +
     "gap:.15rem;width:100%;min-height:44px;margin:0;padding:.5rem .7rem;border:0;" +
-    "border-radius:8px;background:none;color:inherit;font:inherit;text-align:left;" +
+    "border-radius:8px;background:none;color:inherit;font:inherit;text-align:start;" +
     "text-decoration:none;cursor:pointer}" +
     ".pm-panel a:hover,.pm-panel button:hover,.pm-panel a:focus-visible,.pm-panel button:focus-visible" +
     "{background:rgba(127,127,127,.18);outline:none}" +
@@ -80,6 +81,16 @@
     }
     var cs = window.getComputedStyle(el);
     return cs.display === "none" || cs.visibility === "hidden";
+  }
+
+  // True when el is on screen and not inside anything the conversion skips:
+  // hidden() looks at one element, this looks at the whole way up.
+  function shown(el) {
+    if (!el.getClientRects().length) return false;
+    for (var e = el; e && e !== document.documentElement; e = e.parentElement) {
+      if (SKIP[e.tagName] || hidden(e)) return false;
+    }
+    return true;
   }
 
   function abs(url) {
@@ -200,6 +211,8 @@
       }
       flush();
       var m = /^H([1-6])$/.exec(tag);
+      // A logo <h1> is the site's name, not this page's heading.
+      if (m && m[1] === "1" && isLogo(el)) continue;
       if (m) {
         var h = inlineOf(el).replace(/\n/g, " ");
         if (h) out.push(new Array(+m[1] + 1).join("#") + " " + h);
@@ -249,21 +262,92 @@
     return document.body;
   }
 
+  function text(el) {
+    return (el.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
+  // An <h1> that is all link or all image is a site logo, not a page title.
+  // So is one inside a link (<a href="/"><h1>Brand</h1></a>).
+  function isLogo(h) {
+    if (h.parentElement && h.parentElement.closest("a[href]")) return true;
+    var t = text(h), links = h.querySelectorAll("a[href]");
+    for (var i = 0; i < links.length; i++) if (text(links[i]) === t) return true;
+    return !t && !!h.querySelector("img, svg");
+  }
+
+  // A visible <h1> that is not a logo: the page's own title.
+  function isTitleH1(h) {
+    return shown(h) && !isLogo(h);
+  }
+
+  // The page's own title: the first visible <h1> that is not a logo and not
+  // in site chrome (it is called while chrome is marked), else the document
+  // title. On these sites a hero <h1> often sits in a page-level <header>
+  // above <main>. On a page of cards (two or more <article>s) a card's <h1>
+  // is that card's title, not the page's, unless the content root is that
+  // card.
+  function pageTitle(root) {
+    var cards = document.querySelectorAll("article").length > 1;
+    var hs = document.querySelectorAll("h1");
+    for (var i = 0; i < hs.length; i++) {
+      var h = hs[i];
+      if (!isTitleH1(h)) continue;
+      if (cards) {
+        var card = h.closest("article");
+        if (card && card !== root && !card.contains(root)) continue;
+      }
+      var t = inlineOf(h).replace(/\s+/g, " ").trim();
+      if (t) return t;
+    }
+    return (document.title || "").trim();
+  }
+
+  // Site chrome: a page-level <header>/<footer> (HTML's own landmark rule:
+  // inside an <article> or <section> it carries that block's title or
+  // date), every <nav>, and the banner/navigation/contentinfo roles. A
+  // page-level <header> that holds the page's own title (a visible <h1>
+  // that is not a logo) is the page's hero and is not chrome. Everything is
+  // decided before anything is marked, so one mark cannot change the next
+  // decision.
+  function siteChrome() {
+    var found = document.body.querySelectorAll(
+      "footer, nav, header, [role=banner], [role=navigation], [role=contentinfo]");
+    var chrome = [];
+    for (var i = 0; i < found.length; i++) {
+      var el = found[i], tag = el.tagName;
+      if (tag === "HEADER" || tag === "FOOTER") {
+        var up = el.parentElement;
+        if (up && up.closest("article, aside, main, nav, section")) continue;
+        if (tag === "HEADER" && [].some.call(el.querySelectorAll("h1"), isTitleH1)) continue;
+      }
+      chrome.push(el);
+    }
+    return chrome;
+  }
+
   function toMarkdown() {
-    var root = contentRoot(), out = [];
-    if (root === document.body) {
-      // No <main>: leave the site chrome out.
-      var chrome = root.querySelectorAll("footer, header nav, nav");
-      for (var i = 0; i < chrome.length; i++) chrome[i].setAttribute("data-md-skip", "");
+    var root = contentRoot(), out = [], title = "";
+    // Chrome stays marked while the body is converted and while the title
+    // is chosen, so neither can come from a footer, a nav or a logo banner.
+    // Outside a <body> root the marks only touch elements the root does not
+    // contain.
+    var chrome = siteChrome();
+    for (var k = 0; k < chrome.length; k++) chrome[k].setAttribute("data-md-skip", "");
+    try {
       blocks(root, out);
+      title = pageTitle(root);
+    } finally {
       for (var j = 0; j < chrome.length; j++) chrome[j].removeAttribute("data-md-skip");
-    } else {
-      blocks(root, out);
+    }
+    // The copy always opens with the page's own title. If the first <h1>
+    // that came out is something else (a card's, say), the title goes on
+    // top; if it is the title, nothing is added.
+    var first = "";
+    for (var b = 0; b < out.length; b++) {
+      if (/^# /.test(out[b])) { first = out[b].slice(2).trim(); break; }
     }
     var md = out.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
-    var hasTitle = /^# /m.test(md);
-    var title = (document.title || "").trim();
-    if (!hasTitle && title) md = "# " + title + "\n\n" + md;
+    if (title && first !== title) md = "# " + title + "\n\n" + md;
     return md + "\n\n---\nSource: " + pageUrl() + "\n";
   }
 
@@ -379,7 +463,11 @@
     slot.appendChild(live);
 
     details.addEventListener("toggle", function () {
-      if (details.open) panel.style.background = panelBackground(slot);
+      if (!details.open) return;
+      panel.style.background = panelBackground(slot);
+      // Read the direction now: a language switch can flip dir after load.
+      var rtl = window.getComputedStyle(slot).direction === "rtl";
+      details.classList.toggle("pm-rtl", rtl);
     });
 
     panel.addEventListener("click", function (e) {
