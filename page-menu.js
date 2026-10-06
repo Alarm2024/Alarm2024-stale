@@ -1,12 +1,12 @@
-/* page-menu.js — the "⋯ Ask AI" menu at the top of a content page.
+/* page-menu.js — the "Ask Claude | ⌄" button at the top of a content page.
  *
- * Five items, nothing else: Copy page, View as Markdown, Open in ChatGPT,
- * Open in Claude, Open in Cursor. Plain JS. No tracking, no cookies, no
- * network calls: the Markdown is built from the page in this tab, so it is
- * always the page as it is now.
+ * One split button: the main half opens this page in Claude; the ⌄ half
+ * opens a menu with Copy page, View as Markdown, Open in ChatGPT and Open in
+ * Cursor. Plain JS. No tracking, no cookies, no network calls: the Markdown
+ * is built from the page in this tab, so it is always the page as it is now.
  *
  * Use: put <div class="page-menu" data-page-menu></div> where the button
- * goes (its height is reserved inline, so nothing moves when it fills in),
+ * goes (reserve 44px of height inline, so nothing moves when it fills in),
  * and load this file with <script src="/page-menu.js" defer></script>.
  * One copy of this file is shared by every elghaly site; edit them together.
  */
@@ -16,26 +16,47 @@
   var slots = document.querySelectorAll("[data-page-menu]");
   if (!slots.length) return;
 
+  // 44px tall: a full touch target, the size of the buttons beside it.
   var CSS =
-    ".pm{position:relative;display:inline-block;font-size:.8125rem;line-height:1.2}" +
-    ".pm>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;" +
-    "min-height:32px;padding:0 .8rem;border:1px solid currentColor;border-radius:999px;" +
-    "-webkit-user-select:none;user-select:none;white-space:nowrap}" +
-    ".pm>summary::-webkit-details-marker{display:none}" +
-    ".pm>summary:focus-visible{outline:2px solid currentColor;outline-offset:2px}" +
-    ".pm-dots{font-size:1.1em;letter-spacing:.05em}" +
-    ".pm-panel{position:absolute;right:0;top:calc(100% + 6px);z-index:60;width:16rem;" +
+    ".pm{position:relative;display:inline-flex;align-items:stretch;min-height:44px;" +
+    "border:1px solid rgba(127,127,127,.45);border-radius:14px;font-size:1rem;line-height:1.2;" +
+    "font-weight:600;background:rgba(127,127,127,.06)}" +
+    ".pm-main,.pm-more>summary{display:inline-flex;align-items:center;justify-content:center;" +
+    "color:inherit;cursor:pointer;-webkit-user-select:none;user-select:none;white-space:nowrap}" +
+    // Logical corners: the browser picks the outer edge from the text
+    // direction, so a language switch to Arabic needs no script to follow it.
+    ".pm-main{gap:.55rem;padding:0 1.1rem;border-start-start-radius:13px;" +
+    "border-end-start-radius:13px;text-decoration:none}" +
+    ".pm-more{display:flex;border-inline-start:1px solid rgba(127,127,127,.45)}" +
+    ".pm-more>summary{list-style:none;width:44px;border-start-end-radius:13px;" +
+    "border-end-end-radius:13px}" +
+    ".pm-more>summary::-webkit-details-marker{display:none}" +
+    ".pm-main:hover,.pm-more>summary:hover,.pm-more[open]>summary{background:rgba(127,127,127,.16)}" +
+    ".pm-main:focus-visible,.pm-more>summary:focus-visible{outline:2px solid currentColor;outline-offset:2px}" +
+    ".pm-ico{width:18px;height:18px;flex:none}" +
+    ".pm-more[open] .pm-chev{transform:rotate(180deg)}" +
+    ".pm-panel{position:absolute;inset-inline-end:0;top:calc(100% + 6px);z-index:60;width:17rem;" +
     "max-width:calc(100vw - 32px);padding:.35rem;border:1px solid rgba(127,127,127,.45);" +
-    "border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,.35);text-align:start}" +
-    ".pm-rtl .pm-panel{right:auto;left:0}" +
+    "border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.38);text-align:start;font-weight:500}" +
     ".pm-panel a,.pm-panel button{display:flex;flex-direction:column;justify-content:center;" +
-    "gap:.15rem;width:100%;min-height:44px;margin:0;padding:.5rem .7rem;border:0;" +
-    "border-radius:8px;background:none;color:inherit;font:inherit;text-align:start;" +
+    "gap:.15rem;width:100%;min-height:44px;margin:0;padding:.5rem .75rem;border:0;" +
+    "border-radius:10px;background:none;color:inherit;font:inherit;text-align:start;" +
     "text-decoration:none;cursor:pointer}" +
     ".pm-panel a:hover,.pm-panel button:hover,.pm-panel a:focus-visible,.pm-panel button:focus-visible" +
     "{background:rgba(127,127,127,.18);outline:none}" +
-    ".pm-panel .pm-sub{font-size:.75rem;opacity:.75}" +
+    ".pm-panel .pm-sub{font-size:.8rem;font-weight:400;opacity:.75}" +
     ".pm-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}";
+
+  // Drawn inline, so the button needs no image request and takes the text
+  // colour of whatever page it sits on.
+  var SPARK =
+    '<svg class="pm-ico" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">' +
+    '<path d="M12 2.5l1.9 5.6 5.6 1.9-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.9z"/>' +
+    '<path d="M19 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg>';
+  var CHEV =
+    '<svg class="pm-ico pm-chev" viewBox="0 0 24 24" aria-hidden="true" fill="none" ' +
+    'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M6 9l6 6 6-6"/></svg>';
 
   function addStyle() {
     if (document.getElementById("pm-style")) return;
@@ -413,25 +434,40 @@
   }
 
   // ── render ──────────────────────────────────────────────────────────────
+  function claudeUrl(q) { return "https://claude.ai/new?q=" + q; }
+
+  // The ⌄ menu: everything except Claude, which is the button itself.
   var ITEMS = [
     { act: "copy", label: "Copy page", sub: "Markdown for AI tools" },
     { act: "md", label: "View as Markdown", sub: "Plain text" },
     { href: function (q) { return "https://chatgpt.com/?q=" + q; }, label: "Open in ChatGPT" },
-    { href: function (q) { return "https://claude.ai/new?q=" + q; }, label: "Open in Claude" },
     { href: function (q) { return "https://cursor.com/link/prompt?text=" + q; }, label: "Open in Cursor" }
   ];
 
   function build(slot) {
+    var q = encodeURIComponent(prompt());
+    var box = document.createElement("div");
+    box.className = "pm";
+    box.setAttribute("role", "group");
+    box.setAttribute("aria-label", "Ask AI about this page");
+
+    var main = document.createElement("a");
+    main.className = "pm-main";
+    main.href = claudeUrl(q);
+    main.target = "_blank";
+    main.rel = "noopener noreferrer";
+    main.innerHTML = SPARK + "<span>Ask Claude</span>";
+
     var details = document.createElement("details");
-    details.className = "pm";
+    details.className = "pm-more";
     var summary = document.createElement("summary");
-    summary.innerHTML = '<span class="pm-dots" aria-hidden="true">⋯</span><span>Ask AI</span>';
+    summary.setAttribute("aria-label", "More AI options: copy page, Markdown, ChatGPT, Cursor");
+    summary.innerHTML = CHEV;
     var panel = document.createElement("div");
     panel.className = "pm-panel";
     var live = document.createElement("span");
     live.className = "pm-sr";
     live.setAttribute("aria-live", "polite");
-    var q = encodeURIComponent(prompt());
 
     ITEMS.forEach(function (it) {
       var el;
@@ -445,9 +481,9 @@
         el.target = "_blank";
         el.rel = "noopener noreferrer";
       }
-      var main = document.createElement("span");
-      main.textContent = it.label + (it.href ? " ↗" : "");
-      el.appendChild(main);
+      var label = document.createElement("span");
+      label.textContent = it.label + (it.href ? " ↗" : "");
+      el.appendChild(label);
       if (it.sub) {
         var sub = document.createElement("span");
         sub.className = "pm-sub";
@@ -458,16 +494,17 @@
     });
 
     details.appendChild(summary);
+    // The panel hangs off the whole button (.pm is the positioned box), so
+    // it lines up with the button's edge rather than the ⌄ half.
     details.appendChild(panel);
-    slot.appendChild(details);
+    box.appendChild(main);
+    box.appendChild(details);
+    slot.appendChild(box);
     slot.appendChild(live);
 
     details.addEventListener("toggle", function () {
       if (!details.open) return;
       panel.style.background = panelBackground(slot);
-      // Read the direction now: a language switch can flip dir after load.
-      var rtl = window.getComputedStyle(slot).direction === "rtl";
-      details.classList.toggle("pm-rtl", rtl);
     });
 
     panel.addEventListener("click", function (e) {
