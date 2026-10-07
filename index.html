@@ -181,32 +181,6 @@
     .output .verdict-fresh { color: var(--status-fresh); }
     .output .verdict-stale { color: var(--status-stale); }
 
-    .stat-grid {
-      display: grid;
-      gap: 10px;
-      margin-top: 12px;
-    }
-
-    .stat {
-      background: var(--ink-soft);
-      border: 1px solid var(--gold-dim);
-      border-radius: 12px;
-      padding: 12px 14px;
-    }
-
-    .stat__label {
-      font-size: 0.75rem;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--text-muted);
-    }
-
-    .stat__value {
-      font-family: var(--font-serif);
-      font-size: 1.4rem;
-      color: var(--text);
-    }
-
     .footer {
       margin-top: 40px;
       padding-top: 20px;
@@ -276,28 +250,7 @@ verdict=<span class="verdict-stale">STALE</span> target_slot=450106684 ref_slot=
       </section>
 
       <section class="section" id="why">
-        <span class="badge">From our bot's own logs · 2026-09-24 · not measured by stale</span>
-        <h2 class="section__label">Why we built it</h2>
-        <p>Our own trading bot labelled every hop-1 quote it priced in half an hour "fresh" — 283 of 283. The ages it logged beside that word ran from four to eight seconds. The label was our code's, not any provider's, and it was wrong: the bot called a quote fresh because it was cached, without checking how old it was. We found it by reading the bot's own logs and judging the word by the number next to it. stale is that check, made into a tool you can point at any RPC.</p>
-        <p>stale did not produce the numbers below — they are quote ages our bot wrote to its log, in milliseconds, over half an hour of scans. A stale run reports something else: lag in slots against a reference endpoint.</p>
-        <div class="stat-grid">
-          <div class="stat">
-            <div class="stat__label">Quotes our bot labelled fresh</div>
-            <div class="stat__value">283 of 283</div>
-          </div>
-          <div class="stat">
-            <div class="stat__label">Median logged age</div>
-            <div class="stat__value">4636 ms</div>
-          </div>
-          <div class="stat">
-            <div class="stat__label">Max logged age</div>
-            <div class="stat__value">7807 ms</div>
-          </div>
-          <div class="stat">
-            <div class="stat__label">Limit we set</div>
-            <div class="stat__value">2000 ms</div>
-          </div>
-        </div>
+        <p>Built after we saw RPC lag hide behind the word 'fresh'.</p>
       </section>
 
       <section class="section" id="limits">
@@ -318,6 +271,7 @@ verdict=<span class="verdict-stale">STALE</span> target_slot=450106684 ref_slot=
 
     <footer class="footer">
       <p>MIT · <a href="https://github.com/Alarm2024/stale">GitHub</a> · No keys, no wallet, read-only</p>
+      <p><a href="https://elghaly.dev">Work with us</a> · <a href="https://elghaly.dev">elghaly.dev</a></p>
     <p class="lic-badges"><a href="https://creativecommons.org/licenses/by/4.0/" rel="license">© elghaly · CC BY 4.0</a> <a href="https://github.com/Alarm2024/stale/blob/main/LICENSE">Code: MIT</a> <a href="https://github.com/Alarm2024">Open source</a></p>
     </footer>
   </div>
